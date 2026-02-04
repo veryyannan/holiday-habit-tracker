@@ -1355,6 +1355,17 @@
             gap: 4px;
         }
 
+        /* Insert Share Button Logic */
+
+
+        .mobile-header-right button[onclick="toggleCheckinMode()"] {
+            order: 2;
+        }
+
+        .mobile-header-right button[onclick="generateShareImage()"] {
+            order: 1;
+        }
+
         .mobile-icon-btn {
             width: 38px;
             height: 38px;
@@ -1383,6 +1394,11 @@
             color: white;
             box-shadow: 0 2px 8px rgba(244, 115, 91, 0.25);
             font-size: 18px;
+        }
+
+        .mobile-icon-btn.share-btn {
+            color: #ff2442;
+            font-size: 20px;
         }
 
         .mobile-icon-btn.btn-mode.active {
@@ -1840,6 +1856,8 @@
                 <button class="btn-header" id="installBtn" style="display:none">📲 安装应用</button>
                 <button class="btn-header" onclick="printBlankTable()">🖨️ 打印空白表</button>
                 <button class="btn-header" onclick="exportAsImage()">📷 导出图片</button>
+                <button class="btn-header" onclick="generateShareImage()"
+                    style="color:#ff2442;border-color:#ffebef;background:#fff5f7">✨ 生成分享图</button>
             </div>
         </div>
     </header>
@@ -1968,7 +1986,9 @@
         <span id="toastMessage">太棒了！</span>
     </div>
 
-    <script src="js/html2canvas.min.js"></script>
+    <!-- 引入 CDN 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script>
         // ─── Data ───
         const emojiOptions = ['📖', '✍️', '🗣️', '👂', '🧮', '🎹', '🎨', '🖌️', '⚽', '🏃', '🧘', '🏊', '🧹', '📚', '✏️', '🎵', '🌍', '📝', '🎯', '💪'];
@@ -2010,6 +2030,27 @@
             const end = new Date(today); end.setDate(today.getDate() + 29);
             document.getElementById('startDate').value = fmtISO(today);
             document.getElementById('endDate').value = fmtISO(end);
+
+            // Init SortableJS (Safe Mode)
+            try {
+                if (typeof Sortable !== 'undefined') {
+                    new Sortable(document.getElementById('taskList'), {
+                        handle: '.drag-handle',
+                        animation: 150,
+                        ghostClass: 'sortable-ghost',
+                        onEnd: function (evt) {
+                            const item = tasks.splice(evt.oldIndex, 1)[0];
+                            tasks.splice(evt.newIndex, 0, item);
+                            updatePreview();
+                        }
+                    });
+                } else {
+                    console.warn('SortableJS not loaded');
+                }
+            } catch (e) {
+                console.warn('Sortable init failed', e);
+            }
+
             renderTaskList();
             updatePreview();
         }
@@ -2096,28 +2137,22 @@
         function renderTaskList() {
             const el = document.getElementById('taskList');
             el.innerHTML = '';
-            const isMobile = window.innerWidth <= 768;
+            // No need to check isMobile, Sortable works everywhere
 
             tasks.forEach((task, i) => {
                 const item = document.createElement('div');
                 item.className = 'task-item';
-                item.draggable = !isMobile;
+                // Sortable handles draggable attribute automatically
                 item.dataset.index = i;
 
                 const handle = document.createElement('span');
                 handle.className = 'drag-handle';
                 handle.innerHTML = '⠿';
                 handle.title = '拖动排序';
+                // Remove touch restrictions, handle works for touch too
 
-                const touchBtns = document.createElement('div');
-                touchBtns.className = 'touch-reorder';
-                const btnUp = document.createElement('button');
-                btnUp.textContent = '▲'; btnUp.title = '上移';
-                btnUp.onclick = (e) => { e.stopPropagation(); moveTask(i, -1); };
-                const btnDown = document.createElement('button');
-                btnDown.textContent = '▼'; btnDown.title = '下移';
-                btnDown.onclick = (e) => { e.stopPropagation(); moveTask(i, 1); };
-                touchBtns.append(btnUp, btnDown);
+                // Remove old up/down buttons as drag works now
+                // kept simple for cleaner UI
 
                 const sel = document.createElement('select');
                 sel.className = 'task-emoji-select';
@@ -2127,34 +2162,18 @@
                     if (e === task.emoji) o.selected = true;
                     sel.appendChild(o);
                 });
-                sel.onchange = (e) => { e.stopPropagation(); tasks[i].emoji = e.target.value; updatePreview(); };
+                sel.onchange = (e) => { tasks[i].emoji = e.target.value; updatePreview(); };
 
                 const inp = document.createElement('input');
                 inp.type = 'text'; inp.className = 'task-input';
                 inp.value = task.name; inp.placeholder = '任务名称';
-                inp.oninput = (e) => { e.stopPropagation(); tasks[i].name = e.target.value; debouncedUpdatePreview(); };
-                inp.onclick = (e) => e.stopPropagation();
+                inp.oninput = (e) => { tasks[i].name = e.target.value; debouncedUpdatePreview(); };
 
                 const rm = document.createElement('button');
                 rm.className = 'btn-remove'; rm.textContent = '×'; rm.title = '删除';
-                rm.onclick = (e) => { e.stopPropagation(); e.preventDefault(); removeTask(i); };
+                rm.onclick = (e) => { removeTask(i); };
 
-                item.append(handle, touchBtns, sel, inp, rm);
-
-                item.ondragstart = (e) => { draggedIndex = i; item.classList.add('dragging'); };
-                item.ondragend = () => { item.classList.remove('dragging'); document.querySelectorAll('.task-item').forEach(x => x.classList.remove('drag-over')); };
-                item.ondragover = (e) => { e.preventDefault(); if (parseInt(item.dataset.index) !== draggedIndex) item.classList.add('drag-over'); };
-                item.ondragleave = () => item.classList.remove('drag-over');
-                item.ondrop = (e) => {
-                    e.preventDefault(); item.classList.remove('drag-over');
-                    const ti = parseInt(item.dataset.index);
-                    if (draggedIndex !== null && ti !== draggedIndex) {
-                        const t = tasks.splice(draggedIndex, 1)[0];
-                        tasks.splice(ti, 0, t);
-                        renderTaskList(); updatePreview();
-                    }
-                };
-
+                item.append(handle, sel, inp, rm);
                 el.appendChild(item);
             });
         }
@@ -2761,6 +2780,238 @@
             showToast('🎉 应用已安装');
         });
 
+        // ─── Share Image Generator ───
+        async function generateShareImage() {
+            showToast('🎨 正在生成分享图...');
+
+            // 1. Get Data
+            const totalDays = parseInt(document.getElementById('totalDays')?.textContent || '0');
+            const doneDays = parseInt(document.getElementById('doneDays')?.textContent || '0');
+            const percent = document.getElementById('donePercent')?.textContent || '0%';
+            const overallPct = document.getElementById('overallPercent')?.textContent || '0%';
+            const streak = document.getElementById('streak')?.textContent || '0';
+            const avgRate = document.getElementById('completionRate')?.textContent || '0%';
+            const reward = document.getElementById('rewardText').value || '坚持打卡，即可获得神秘礼物一份！';
+            const parentMsg = document.getElementById('parentMessage').value || '宝贝,妈妈相信你可以做到！加油！';
+
+            // 2. Build Container (Fixed 375px Mobile Width)
+            const container = document.createElement('div');
+            Object.assign(container.style, {
+                position: 'fixed', left: '-9999px', top: '0', zIndex: '-100', width: '375px',
+                background: '#f5f5f7', // Light gray background
+                padding: '24px 20px', borderRadius: '0',
+                fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+                display: 'flex', flexDirection: 'column', gap: '16px'
+            });
+
+            // 3. Header Card
+            const header = document.createElement('div');
+            header.style.cssText = "background:url('https://api.iconify.design/noto:party-popper.svg') no-repeat right top/60px, white; background-position: right 10px top 10px; border-radius: 20px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03);";
+            header.innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                    <div style="width:48px;height:48px;background:linear-gradient(135deg, #ff6b6b, #ff8e53);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;color:white;box-shadow:0 6px 16px rgba(255,107,107,0.3);">📅</div>
+                    <div>
+                        <div style="font-size:20px;font-weight:900;color:#2c3e50;line-height:1.2;">我的寒假打卡计划</div>
+                        <div style="font-size:12px;color:#95a5a6;font-weight:500;margin-top:4px;">自律给我自由 ✨</div>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                    <div><div style="font-size:11px;color:#7f8c8d;margin-bottom:4px;">今日完成度</div><div style="font-size:20px;font-weight:800;color:#f1c40f;">${percent}</div></div>
+                    <div><div style="font-size:11px;color:#7f8c8d;margin-bottom:4px;">当前完成率</div><div style="font-size:20px;font-weight:800;color:#3498db;">${document.getElementById('currentPercent')?.textContent || '0%'}</div></div>
+                    <div><div style="font-size:11px;color:#7f8c8d;margin-bottom:4px;">整体进度</div><div style="font-size:20px;font-weight:800;color:#ff6b6b;">${overallPct}</div></div>
+                </div>
+            `;
+            container.appendChild(header);
+
+            // 4. Task Grid (The "Table")
+            const gridCard = document.createElement('div');
+            gridCard.style.cssText = "background:white;border-radius:20px;padding:16px;box-shadow:0 4px 12px rgba(0,0,0,0.03);";
+
+            // Header for Grid: "打卡记录" + Dates
+            // Logic: Show today + next 3 days (Total 4 columns)
+            const s0 = document.getElementById('startDate').value;
+            const startDate = new Date(s0);
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+
+            // Determine start index for the 4-day view
+            let startIdx = 0;
+            if (today >= startDate) {
+                startIdx = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
+            }
+            const colIndexes = [startIdx, startIdx + 1, startIdx + 2, startIdx + 3];
+
+            let headerHTML = `<div style="display:flex;align-items:center;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #f0f0f0;">
+                <div style="flex:1;font-weight:bold;font-size:15px;color:#2c3e50;display:flex;align-items:center;gap:8px;">📊 打卡记录</div>`;
+
+            colIndexes.forEach(idx => {
+                const cur = new Date(startDate); cur.setDate(startDate.getDate() + idx);
+                const isToday = cur.getTime() === today.getTime();
+                const color = isToday ? '#ff6b6b' : '#95a5a6';
+                headerHTML += `<div style="width:40px;text-align:center;">
+                    <div style="font-size:10px;color:${color};">${cur.getMonth() + 1}月</div>
+                    <div style="font-size:14px;font-weight:bold;color:${color};">${cur.getDate()}</div>
+                </div>`;
+            });
+            headerHTML += `</div>`; // Close header
+
+            // Body Rows
+            let rowsHTML = '';
+            tasks.forEach(t => {
+                let cells = '';
+                colIndexes.forEach(dayIdx => {
+                    const cb = document.querySelector(`.checkbox[data-task-id="${t.id}"][data-day="${dayIdx}"]`);
+                    let content = '';
+                    if (cb) {
+                        if (cb.checked) content = `<div style="width:24px;height:24px;background:#2c3e50;border-radius:6px;display:flex;align-items:center;justify-content:center;margin:0 auto;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>`;
+                        else if (cb.closest('.weekend')) content = `<div style="width:24px;height:24px;background:#f9f9f9;border-radius:6px;margin:0 auto;"></div>`; // Rest
+                        else content = `<div style="width:24px;height:24px;border:2px solid #eee;border-radius:6px;margin:0 auto;"></div>`;
+                    } else {
+                        content = `<div style="width:24px;height:24px;border:2px solid #eee;border-radius:6px;margin:0 auto;"></div>`; // Placeholder
+                    }
+                    cells += `<div style="width:40px;text-align:center;">${content}</div>`;
+                });
+
+                rowsHTML += `<div style="display:flex;align-items:center;padding:8px 0;">
+                    <div style="flex:1;display:flex;align-items:center;gap:8px;overflow:hidden;">
+                        <div style="font-size:18px;min-width:24px;">${t.emoji}</div>
+                        <div style="font-size:13px;color:#2c3e50;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.name}</div>
+                    </div>
+                    ${cells}
+                </div>`;
+            });
+
+            gridCard.innerHTML = headerHTML + rowsHTML;
+            container.appendChild(gridCard);
+
+            // 5. Bottom Stats (Circles)
+            const botStats = document.createElement('div');
+            botStats.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;";
+            botStats.innerHTML = `
+                <div style="background:white;padding:16px 10px;border-radius:16px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.03);">
+                    <div style="font-size:24px;font-weight:800;color:#ff6b6b;margin-bottom:4px;">${doneDays}</div>
+                    <div style="font-size:10px;color:#95a5a6;">已完成天数</div>
+                </div>
+                <div style="background:white;padding:16px 10px;border-radius:16px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.03);">
+                    <div style="font-size:24px;font-weight:800;color:#9b59b6;margin-bottom:4px;">${avgRate}</div>
+                    <div style="font-size:10px;color:#95a5a6;">平均完成率</div>
+                </div>
+                <div style="background:white;padding:16px 10px;border-radius:16px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.03);">
+                    <div style="font-size:24px;font-weight:800;color:#f39c12;margin-bottom:4px;">${streak}</div>
+                    <div style="font-size:10px;color:#95a5a6;">连续打卡</div>
+                </div>
+            `;
+            container.appendChild(botStats);
+
+            // 6. Bottom Cards (Message/Reward)
+            const extra = document.createElement('div');
+            extra.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;";
+            extra.innerHTML = `
+                 <div style="background:white;padding:16px;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.03);">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-weight:bold;font-size:13px;">🎁 奖励承诺</div>
+                    <div style="font-size:11px;color:#7f8c8d;line-height:1.4;">${reward}</div>
+                </div>
+                 <div style="background:white;padding:16px;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.03);">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-weight:bold;font-size:13px;">💌 家长寄语</div>
+                    <div style="font-size:11px;color:#7f8c8d;line-height:1.4;">${parentMsg}</div>
+                </div>
+            `;
+            container.appendChild(extra);
+
+            // 7. Footer
+            const footer = document.createElement('div');
+            footer.innerHTML = `
+                <div style="margin-top:4px;text-align:center;font-size:10px;color:#bdc3c7;display:flex;justify-content:center;align-items:center;gap:6px;">
+                    Created with Holiday Habit Tracker <span style="color:#ff6b6b;font-weight:bold;">💯 加油!</span>
+                </div>
+            `;
+            container.appendChild(footer);
+
+            document.body.appendChild(container);
+
+            try {
+                // Use a slight delay to ensure fonts render
+                await new Promise(r => setTimeout(r, 200));
+                const canvas = await html2canvas(container, { scale: 3, backgroundColor: null, useCORS: true, logging: false });
+                showImageModal(canvas.toDataURL('image/png'));
+                showToast('✅ 分享图已生成！');
+            } catch (err) { console.error(err); showToast('⚠️ 生成失败'); }
+            finally { document.body.removeChild(container); }
+            return;
+            /* OLD CODE IGNORED
+
+            // 3. Header
+            const header = document.createElement('div');
+            header.innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="width:48px;height:48px;background:linear-gradient(135deg, #ff6b6b, #ff8e53);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 6px 16px rgba(255,107,107,0.3);color:white;">📅</div>
+                    <div>
+                        <div style="font-size:20px;font-weight:800;color:#2c3e50;line-height:1.2;margin-bottom:4px;">我的寒假打卡计划</div>
+                        <div style="font-size:12px;color:#95a5a6;font-weight:500;">坚持就是胜利 ✨</div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(header);
+
+            // 4. Stats Card (Forced Layout)
+            const stats = document.createElement('div');
+            Object.assign(stats.style, {
+                background: 'white', borderRadius: '16px', padding: '16px',
+                boxShadow: '0 8px 24px rgba(149,157,165,0.08)', border: '1px solid #f0f0f0',
+                display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', textAlign: 'center'
+            });
+            stats.innerHTML = `
+                <div><div style="font-size:10px;color:#7f8c8d;margin-bottom:4px;">打卡天数</div><div style="font-size:18px;font-weight:800;color:#ff6b6b;">${doneDays}</div></div>
+                <div><div style="font-size:10px;color:#7f8c8d;margin-bottom:4px;">当前进度</div><div style="font-size:18px;font-weight:800;color:#3498db;">${percent}</div></div>
+                <div><div style="font-size:10px;color:#7f8c8d;margin-bottom:4px;">总计任务</div><div style="font-size:18px;font-weight:800;color:#f1c40f;">${tasks.length}</div></div>
+            `;
+            container.appendChild(stats);
+
+            // 5. Task List (Simplified Visuals)
+            const taskListDiv = document.createElement('div');
+            taskListDiv.style.display = 'flex';
+            taskListDiv.style.flexDirection = 'column';
+            taskListDiv.style.gap = '10px';
+
+            tasks.forEach((t, i) => {
+                const row = document.createElement('div');
+                Object.assign(row.style, {
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    padding: '12px', background: '#f8f9fa', borderRadius: '12px', border: '1px solid #eee'
+                });
+                row.innerHTML = `
+                    <div style="font-size:20px;width:32px;text-align:center;">${t.emoji}</div>
+                    <div style="font-size:14px;font-weight:600;color:#2c3e50;flex:1;">${t.name}</div>
+                    <div style="width:20px;height:20px;border:2px solid #ddd;border-radius:6px;background:white;"></div>
+                `;
+                taskListDiv.appendChild(row);
+            });
+            container.appendChild(taskListDiv);
+
+            // 6. Footer
+            const footer = document.createElement('div');
+            footer.innerHTML = `
+                <div style="margin-top:10px;text-align:center;font-size:10px;color:#bdc3c7;letter-spacing:1px;">
+                    CREATED WITH HOLIDAY HABIT TRACKER
+                </div>
+            `;
+            container.appendChild(footer);
+
+            document.body.appendChild(container);
+
+            try {
+                // Use a slight delay to ensure fonts render
+                await new Promise(r => setTimeout(r, 100));
+                const canvas = await html2canvas(container, { scale: 3, backgroundColor: null, useCORS: true, logging: false });
+                const link = document.createElement('a');
+                link.download = `holiday_habit_share_${new Date().getTime()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                showToast('✅ 完美分享图已生成！');
+            } catch (err) { console.error(err); showToast('⚠️ 生成失败'); }
+            finally { document.body.removeChild(container); }
+        */
+        }
+
         // iOS Guide
         function isIOS() { return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream; }
         function isInStandaloneMode() { return ('standalone' in window.navigator) && (window.navigator.standalone); }
@@ -2772,6 +3023,176 @@
                     localStorage.setItem('iosGuideShown', 'true');
                 }, 3500);
             }
+        }
+    </script>
+
+    <!-- ─── Image Preview Modal (New) ─── -->
+    <div id="imageModal" class="image-modal">
+        <div class="image-modal-content">
+            <span class="close-modal" onclick="closeImageModal()">&times;</span>
+            <div class="image-modal-title">✨ 分享图生成成功</div>
+            <div class="image-modal-body">
+                <img id="generatedImage" src="" alt="Share Image">
+                <p class="mobile-hint">📱 长按图片可保存到相册</p>
+            </div>
+            <div class="image-modal-footer">
+                <button class="modal-btn secondary" onclick="closeImageModal()">关闭</button>
+                <a id="downloadLink" class="modal-btn primary" href="#" download="habit_tracker.png">💻 下载图片</a>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .image-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            align-items: center;
+            justify-content: center;
+            overflow-y: auto;
+            padding: 20px 0;
+        }
+
+        .image-modal.show {
+            display: flex;
+            animation: fadeIn 0.3s;
+        }
+
+        .image-modal-content {
+            background-color: #fefefe;
+            border-radius: 20px;
+            padding: 24px;
+            width: 90%;
+            max-width: 420px;
+            text-align: center;
+            position: relative;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s;
+            margin: auto;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0
+            }
+
+            to {
+                opacity: 1
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1
+            }
+        }
+
+        .close-modal {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close-modal:hover {
+            color: #333;
+        }
+
+        .image-modal-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 16px;
+            color: #2c3e50;
+        }
+
+        .image-modal-body img {
+            width: 100%;
+            height: auto;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            margin-bottom: 12px;
+        }
+
+        .mobile-hint {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .mobile-hint {
+                display: block;
+            }
+
+            .modal-btn.primary {
+                display: none;
+            }
+        }
+
+        .image-modal-footer {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .modal-btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        .modal-btn.secondary {
+            background: #f0f2f5;
+            color: #2c3e50;
+        }
+
+        .modal-btn.primary {
+            background: #ff6b6b;
+            color: white;
+            display: inline-flex;
+            align-items: center;
+        }
+    </style>
+
+    <script>
+        function showImageModal(dataUrl) {
+            const modal = document.getElementById('imageModal');
+            const img = document.getElementById('generatedImage');
+            const link = document.getElementById('downloadLink');
+
+            img.src = dataUrl;
+            link.href = dataUrl;
+            link.download = `holiday_habit_share_${new Date().getTime()}.png`;
+
+            modal.classList.add('show');
+        }
+        function closeImageModal() {
+            document.getElementById('imageModal').classList.remove('show');
+        }
+        // Close on click outside
+        window.onclick = function (event) {
+            const modal = document.getElementById('imageModal');
+            if (event.target == modal) closeImageModal();
         }
     </script>
 </body>
