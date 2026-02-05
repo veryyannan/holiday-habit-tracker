@@ -2026,10 +2026,13 @@
 
         // ─── Init ───
         function init() {
-            const today = new Date();
-            const end = new Date(today); end.setDate(today.getDate() + 29);
-            document.getElementById('startDate').value = fmtISO(today);
-            document.getElementById('endDate').value = fmtISO(end);
+            const hasConfig = loadConfig();
+            if (!hasConfig) {
+                const today = new Date();
+                const end = new Date(today); end.setDate(today.getDate() + 29);
+                document.getElementById('startDate').value = fmtISO(today);
+                document.getElementById('endDate').value = fmtISO(end);
+            }
 
             // Init SortableJS (Safe Mode)
             try {
@@ -2204,6 +2207,7 @@
 
         // ─── Preview ───
         function updatePreview() {
+            saveConfig(); // Auto-save on every update
             const name = document.getElementById('studentName').value || '';
             const s0 = document.getElementById('startDate').value;
             const e0 = document.getElementById('endDate').value;
@@ -2492,6 +2496,39 @@
         }
 
         // ─── Persistence ───
+        function saveConfig() {
+            const config = {
+                studentName: document.getElementById('studentName').value,
+                startDate: document.getElementById('startDate').value,
+                endDate: document.getElementById('endDate').value,
+                weekendRest: document.getElementById('weekendRest').checked,
+                rewardText: document.getElementById('rewardText').value,
+                parentMessage: document.getElementById('parentMessage').value,
+                tasks: tasks
+            };
+            localStorage.setItem('trackerConfig_v2', JSON.stringify(config));
+        }
+
+        function loadConfig() {
+            const saved = localStorage.getItem('trackerConfig_v2');
+            if (saved) {
+                try {
+                    const config = JSON.parse(saved);
+                    if (config.studentName) document.getElementById('studentName').value = config.studentName;
+                    if (config.startDate) document.getElementById('startDate').value = config.startDate;
+                    if (config.endDate) document.getElementById('endDate').value = config.endDate;
+                    if (config.weekendRest !== undefined) document.getElementById('weekendRest').checked = config.weekendRest;
+                    if (config.rewardText !== undefined) document.getElementById('rewardText').value = config.rewardText;
+                    if (config.parentMessage !== undefined) document.getElementById('parentMessage').value = config.parentMessage;
+                    if (config.tasks && Array.isArray(config.tasks)) tasks = config.tasks;
+                    return true;
+                } catch (e) {
+                    console.error('Config load failed', e);
+                }
+            }
+            return false;
+        }
+
         function saveProgress() {
             const states = Array.from(document.querySelectorAll('.checkbox')).map(cb => ({
                 task: cb.dataset.taskId,
