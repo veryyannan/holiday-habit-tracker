@@ -2439,16 +2439,33 @@
             const overallRate = totalAvail > 0 ? Math.round(totalChecked / totalAvail * 100) : 0;
 
             let streak = 0;
+            // Find today index effectively or just iterate dates
             for (let d = cols - 1; d >= 0; d--) {
                 const cur = new Date(startDate); cur.setDate(startDate.getDate() + d); cur.setHours(0, 0, 0, 0);
-                if (cur > today) continue;
-                if (wkRest && isWeekend(cur)) { streak++; continue; }
-                let ok = true;
-                for (let t = 0; t < rows; t++) {
-                    const cb = document.querySelector(`.checkbox[data-task-id="${tasks[t].id}"][data-day="${d}"]`);
-                    if (!cb || !cb.checked) { ok = false; break; }
+                if (cur > today) continue; // Skip future
+
+                let dayComplete = false;
+                if (wkRest && isWeekend(cur)) {
+                    dayComplete = true;
+                } else {
+                    let ok = true;
+                    for (let t = 0; t < rows; t++) {
+                        const cb = document.querySelector(`.checkbox[data-task-id="${tasks[t].id}"][data-day="${d}"]`);
+                        if (!cb || !cb.checked) { ok = false; break; }
+                    }
+                    if (ok) dayComplete = true;
                 }
-                if (ok) streak++; else break;
+
+                if (dayComplete) {
+                    streak++;
+                } else {
+                    // If it's today and not done, we just don't add to streak, but we don't zero it out
+                    if (cur.getTime() === today.getTime()) {
+                        continue;
+                    } else {
+                        break; // Break streak on past incomplete day
+                    }
+                }
             }
 
             document.getElementById('totalDays').textContent = completedDays;
